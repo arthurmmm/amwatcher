@@ -1,0 +1,83 @@
+<html>
+  <title>点剧需要认证您的身份</title>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css" />
+    <style>
+      .center-block {  
+        text-align: center;
+        position: absolute;
+        top: 50%;
+        -webkit-transform: translateY(-50%);
+        -moz-transform:  translateY(-50%);
+        -ms-transform:  translateY(-50%);
+        -o-transform:  translateY(-50%);
+        transform:  translateY(-50%);
+      }  
+      .expire {
+        color: red;
+      }
+    </style>
+    {% if pin_code %}
+      <script>
+        var timeout = 120;
+        var pin_code = '{{pin_code}}'
+        var poll = setInterval(function(){
+          console.log('Checking login status, timeout: '+timeout);
+          $('#pin_msg').html('PIN: {{pin_code}}  ('+timeout+'秒内有效)');
+          // Request after every 3 seconds
+          if (timeout % 3 == 0) {
+            $.ajax({
+              type: 'GET',
+              url: '{{ url_for("pin_login", _external=True, pin_code=pin_code) }}',
+              success: function(data){
+                console.log(data);
+                console.lop
+                if (data['status']) {
+                  clearInterval(poll);
+                  console.log('登陆成功！OPEN_ID: '+ data['open_id']);
+                  var next = window.location.href.match(/next=(.*)/);
+                  var url = '{{ url_for("notify", _external=True, title="登陆成功", msg="您可以继续访问其他网页") }}';
+                  if (next == null) {
+                    url = '{{ url_for("notify", _external=True, title="登陆成功", msg="您可以继续访问其他网页") }}';
+                  } else {
+                    url = window.location.href+'&open_id='+data['open_id'];
+                  }
+                  
+                  window.location.replace(url);
+                }
+              },
+              error: function(xhr) {
+                clearInterval(poll);
+                $('#pin_msg').addClass('expire');
+                $('#pin_msg').html('登陆服务器出现了一点故障，请稍后再试...');
+              }
+            });
+          }
+          if (timeout == 0) {
+            clearInterval(poll);
+            $('#pin_msg').addClass('expire');
+            $('#pin_msg').html('PIN码已失效，请刷新页面重新获取');
+          }
+          timeout = timeout - 1;
+        }, 1000);
+      </script>
+    {% endif %}
+  </head>
+  <body>
+    <div class="col-xs-12 center-block">
+      <h1>您正在访问的页面需要微信用户认证</h1>
+      {% if pin_code %}
+        <h1>请扫码关注公众号，并通过聊天窗口发送屏幕上的PIN码</h1>
+        <h1 id="pin_msg">PIN: {{pin_code}}  (120秒内有效)</h1>
+      {% else %}
+        <h1>请扫码关注公众号</h1>
+      {% endif %}
+      <img src="http://okmokavp8.bkt.clouddn.com/images/qrcode_for_gh_3536bd17aa3a_344.jpg"></img>
+    </div>
+  </body>
+</html>

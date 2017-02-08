@@ -1,0 +1,144 @@
+<html>
+  <title>点剧机器人帐号登陆界面</title>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    
+    <script>
+    $(function(){
+      var $succ_toast = $('#succ_toast');
+      var $fail_dialog = $('#fail_dialog');
+      $('.weui-dialog__btn').on('click', function(){
+        $(this).parents('.js_dialog').fadeOut(200);
+      });
+      
+      $('.weui-cells_form ').each(function(){
+        var $source = $(this).find('input[name="source"]');
+        var $username = $(this).find('input[name="username"]');
+        var $password = $(this).find('input[name="password"]');
+        var $captcha = $(this).find('input[name="captcha"]');
+        var $captcha_img = $(this).find('img[name="captcha_img"]');
+        var $submitbtn = $(this).find('.weui-btn[name="submit"]');
+        var $form = $(this);
+        
+        //获得验证码
+        $captcha.on('focus', function(){
+          var $captcha_div = $captcha_img.parent('.weui-cell');
+          if ($captcha_div.hasClass('hidden') == true) {
+            $captcha_div.fadeIn(100);
+            $captcha_div.removeClass('hidden');
+            var timestamp = new Date();
+            timestamp = timestamp.getTime();
+            $captcha_img.attr('src', '{{ url_for("captcha_prepare", _external=True, source="_source", username="_username") }}?_=_ts'
+              .replace(/_source/, $source.val())
+              .replace(/_username/, $username.val())
+              .replace(/_ts/, timestamp)
+            ); 
+          }
+        })
+        
+        //刷新验证码
+        $captcha_img.click(function(){
+          var timestamp = new Date();
+          timestamp = timestamp.getTime();
+          $captcha_img.attr('src', '{{ url_for("captcha_prepare", _external=True, source="_source", username="_username") }}?_=_ts'
+            .replace(/_source/, $source.val())
+            .replace(/_username/, $username.val())
+            .replace(/_ts/, timestamp)
+          ); 
+        });
+        
+        
+        $submitbtn.click(function(){
+          console.log('click!');
+          $(this).attr('disable', true);
+          
+          $.ajax({
+            type: 'POST',
+            url: '{{ url_for("captcha_login_post", _external=True) }}',
+            data: JSON.stringify({
+              source: $source.val(),
+              username: $username.val(),
+              password: $password.val(),
+              captcha: $captcha.val(),
+            }),
+            success: function(data){
+              console.log(data);
+              $(this).removeAttr('disable');
+              if (data['status']==true) {
+                $form.attr('style', 'display: none;');
+                $succ_toast.fadeIn(100);
+                setTimeout(function(){
+                  $succ_toast.fadeOut(100);
+                }, 2000);
+              } else {
+                console.log($fail_dialog);
+                $fail_dialog.find('.weui-dialog__bd').html(data['message']['reason']);
+                $fail_dialog.fadeIn(200);
+              }
+            }
+          })
+        });
+      });
+    });
+    </script>
+    
+    <link rel="stylesheet" href="https://res.wx.qq.com/open/libs/weui/1.1.1/weui.min.css"/>
+  </head>
+  <body ontouchstart>
+    {% for account in accounts %}
+    <div class="weui-cells weui-cells_form">
+      <div class="weui-cell">
+        <div class="weui-cell__hd"><label class="weui-label">网站</label></div>
+        <div class="weui-cell__bd">
+          <input class="weui-input" type="text" name="source" value="{{ account['source'] }}" >
+        </div>
+      </div>
+      <div class="weui-cell">
+        <div class="weui-cell__hd"><label class="weui-label">用户名</label></div>
+        <div class="weui-cell__bd">
+          <input class="weui-input" type="text" name="username" value="{{ account['username'] }}">
+        </div>
+      </div>
+      <div class="weui-cell">
+        <div class="weui-cell__hd"><label class="weui-label">密码</label></div>
+        <div class="weui-cell__bd">
+          <input class="weui-input" type="password" name="password" value="{{ account['password'] }}">
+        </div>
+      </div>
+      <div class="weui-cell hidden" style="display: none;">
+          <img class="weui-vcode-img" name="captcha_img" src="#">
+      </div>
+      <div class="weui-cell">
+        <div class="weui-cell__hd"><label class="weui-label">验证码</label></div>
+        <div class="weui-cell__bd">
+            <input class="weui-input" type="text" name="captcha" placeholder="请输入验证码">
+        </div>
+      </div>
+      {% if 'update_ts' in account %}
+        <div class="weui-cells__tips">上次登陆时间{{ account['update_ts'] }}</div>
+      {% endif %}
+      <div class="weui-btn-area">
+        <button class="weui-btn weui-btn_primary" href="javascript:" name="submit">登陆</button>
+      </div>
+    </div>
+    {% endfor %}
+    <div id="succ_toast" style="display: none;">
+      <div class="weui-mask_transparent"></div>
+      <div class="weui-toast">
+        <i class="weui-icon-success-no-circle weui-icon_toast"></i>
+        <p class="weui-toast__content">登陆成功</p>
+      </div>
+    </div>
+    <div class="js_dialog" id="fail_dialog" style="display: none;">
+      <div class="weui-mask"></div>
+      <div class="weui-dialog">
+        <div class="weui-dialog__bd"></div>
+        <div class="weui-dialog__ft">
+          <a href="javascript:;" class="weui-dialog__btn weui-dialog__btn_primary">知道了</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
