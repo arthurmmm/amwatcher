@@ -6,4 +6,3 @@ redis==2.10.5
 requests==2.13.0
 PyYAML==3.12
 uwsgi
-gevent
