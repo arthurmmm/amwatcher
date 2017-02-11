@@ -172,8 +172,12 @@ def show_updates(to_user):
         last_check_time = now_time - timedelta(days=back_days)
     logger.debug(last_check_time)
     
-    # 更新查看时间
+    lkey = settings.LAST_CHECK_KEY % to_user
     if not is_replay and back_days == 0:
+        # 获取更新查看时间，并保存到REDIS缓存
+        last_check_time = user['last_check_time'] 
+        if now_time - last_check_time > timedelta(days=30): # 最多显示1个月内的更新，避免内容过多
+            last_check_time = now_time - timedelta(days=30)
         logger.debug('Write update to mongo...')
         mongo_users.find_one_and_update(
             { 'open_id': to_user }, 
@@ -181,6 +185,20 @@ def show_updates(to_user):
                 '$set': { 'last_check_time': now_time },
             }
         )
+        last_check_time_str = datetime.strftime(last_check_time, '%Y-%m-%d %H:%M:%S')
+        redis_db.setex(lkey, 300, last_check_time_str)
+    elif back_days > 0:
+        last_check_time = now_time - timedelta(days=back_days)
+    else:
+        # REPLAY情况下读取REDIS缓存获得更新时间
+        try:
+            redis_db.expire(lkey, 300)
+            last_check_time_str = redis_db.get(lkey).decode('utf-8')
+            last_check_time = datetime.strptime(last_check_time_str, '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            raise UnexpectAnswer
+            
+    logger.debug(last_check_time)
     
     # 获取所有新资源
     new_feeds = list(mongo_feeds.find({
