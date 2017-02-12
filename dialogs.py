@@ -203,7 +203,7 @@ def show_updates(to_user):
     # 获取所有新资源
     new_feeds = list(mongo_feeds.find({
         'keyword_id': { '$in': user['follow_keywords'] },
-        'upload_time': { '$gte': last_check_time },
+        'scrapy_time': { '$gte': last_check_time },
         'break_rules': {'$exists': False},
     }).sort('upload_time', DESCENDING))
     
