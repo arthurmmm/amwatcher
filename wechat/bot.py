@@ -125,10 +125,13 @@ def answer(data, module):
             type, msg = e.value
             redis_db.delete(hkey)
             break
-        except UnexpectAnswer:
+        except UnexpectAnswer as e:
             # 用户发送了一个不合法的回复时抛出这个异常
             # BOT会认为用户希望开启一段新的会话
             redis_db.delete(hkey)
+            if str(e):
+                # 通过Exception value可以控制输入
+                msg_content = str(e)
             dialog = _new_dialog(msg_type, msg_content, to_user)
             continue
     

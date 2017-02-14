@@ -203,11 +203,13 @@ def show_updates(to_user):
     # 获取所有新资源
     new_feeds = list(mongo_feeds.find({
         'keyword_id': { '$in': user['follow_keywords'] },
-        'scrapy_time': { '$gte': last_check_time },
+        'scrapy_time': { '$gte': last_check_time }, # 获取在上次爬取后新增的资源
+        'upload_time': { '$gte': last_check_time - timedelta(days=5) }, # 同时upload_time必须在一周内,避免因搜索排名导致的误更新
         'break_rules': {'$exists': False},
     }).sort('upload_time', DESCENDING))
     
     text_list = ['%(title)s\n%(href)s' % f for f in new_feeds]
+    fid_list = [f['_id'] for f in new_feeds]
     
     summary_text_list = []
     for kid in user['follow_keywords']:
@@ -217,17 +219,22 @@ def show_updates(to_user):
             last_ep_text = '第%s话' % last_series['episode']
         else:
             last_ep_text = last_series['date_episode']
-        if last_check_time <= last_series['first_upload_time']:
+        new_feed_count = 0
+        for fid in last_series['feeds']:
+            if fid not in fid_list:
+                break
+        else:
+            # 最新话资源都是这次在这次更新中=>更新了新一集
             summary_text_list.append('%s[%s] 更新至 %s' % (keyword['keyword'], TYPE_TXT[keyword['type']], last_ep_text))
             continue
-        else:
-            # 查看是否有新资源
-            new_feed_count = 0
-            for f in new_feeds:
-                if f['keyword_id'] == kid:
-                    new_feed_count += 1
-            if new_feed_count > 0:
-                summary_text_list.append('%s[%s] 有%s个新资源' % (keyword['keyword'], TYPE_TXT[keyword['type']], new_feed_count))
+        # 并不是新一集
+        new_feed_count = 0
+        for f in new_feeds:
+            if f['keyword_id'] == kid:
+                new_feed_count += 1
+        if new_feed_count > 0:
+            summary_text_list.append('%s[%s] 有%s个新资源' % (keyword['keyword'], TYPE_TXT[keyword['type']], new_feed_count))
+
     if not summary_text_list:
         return ('TextMsg', '从上次查看[%s]到现在，关注的资源没有更新哦' % last_check_time.strftime('%Y/%m/%d %H:%M'))
     if back_days > 0:
@@ -293,17 +300,48 @@ def show_follows(to_user):
     mongo_keywords = mongoCollection('keywords')
     user = mongo_users.find_one({'open_id': to_user})
     follow_list = user['follow_keywords']
-    keywords = mongo_keywords.find({'_id': {'$in': follow_list}})
-    text_list = ['%s [%s]' % (kw['keyword'], TYPE_TXT[kw['type']]) for kw in keywords]
+    keywords = list(mongo_keywords.find({'_id': {'$in': follow_list}}))
+    num = 0
+    text_list = []
+    already_followed = {}
+    for kw in keywords:
+        text_list.append('%s. %s [%s]' % (num, kw['keyword'], TYPE_TXT[kw['type']]))
+        num += 1
     for msg, is_last in _make_page(
         text_list, 10, 
-        prefix='--- 关注列表 ---',
+        prefix='【回复F加数字(如F2)取关】\n--- 关注列表 ---',
+        suffix='--- 回复N翻页 回复数字选择 ---', 
+        end_suffix='--- 回复数字选择 ---'
     ):
         selected, is_replay = yield msg
         if selected in ['N', 'n'] and not is_last:
             continue
-        else:
+        try:
+            while True:
+                if selected[0] in ['F', 'f']:
+                    selected = int(selected[1:])
+                    keyword = keywords[selected]
+                    logger.debug(keyword)
+                    if not is_replay:
+                        msg_type, msg_content = _try_follow(to_user, True, keyword)
+                        clear_msg = re.sub('%s.*$' % selected, '',msg[1])
+                        msg_content = '%s\n(%s)' % (clear_msg, msg_content)
+                    else:
+                        msg_content = 'none'
+                    selected, is_replay = yield ('TextMsg', msg_content)
+                else:
+                    logger.debug(selected)
+                    break
+            selected = int(selected)
+            if selected > len(keywords) or selected < 0:
+                raise TypeError
+            logger.debug(keywords[selected]['keyword'])
+            raise UnexpectAnswer(keywords[selected]['keyword'])
+        except UnexpectAnswer as e:
+            raise e
+        except Exception:
             raise UnexpectAnswer
+        
 
 def _try_follow(to_user, already_followed, keyword):
     mongo_users = mongoCollection('users')
