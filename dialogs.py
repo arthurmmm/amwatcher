@@ -4,12 +4,14 @@ import json
 import re
 import settings
 import logging
+import random
 from redis import StrictRedis
 from pymongo import MongoClient, DESCENDING
 from flask import url_for
 from wechat.bot import UnexpectAnswer
 from datetime import datetime, timedelta
 from collections import defaultdict
+from bson import json_util
 
 logger = logging.getLogger('__main__')
 
@@ -31,6 +33,7 @@ ROUTER = {
         ('^[\?\？]{2}$', 'show_help_link'),
         ('^帮助$', 'show_help'),
         ('^[!！]\d*$', 'show_updates'),
+        ('^[!！][!！]$', 'show_recommend'),
         ('^[.。]$', 'show_follows'),
         # ('^\d{6}$', 'pin_login'),
         ('.*', 'search_keyword'),
@@ -264,6 +267,84 @@ def show_updates(to_user):
                     raise UnexpectAnswer
         else:
             raise UnexpectAnswer        
+
+def show_recommend(to_user):
+    yield None
+    msg_content, is_replay = yield None
+    
+    mongo_feeds = mongoCollection('feeds')
+    mongo_series = mongoCollection('series')
+    # mongo_users = mongoCollection('users')
+    mongo_keywords = mongoCollection('keywords')
+    now_time = datetime.now()
+    start_time = now_time - timedelta(days=7)
+    recent_update_keywords = list(mongo_feeds.distinct('keyword_id',
+    {
+        'scrapy_time': { '$gte': start_time }, # 获取在上次爬取后新增的资源
+        'break_rules': {'$exists': False},
+    }))
+    # random.shuffle(recent_update_keywords)
+    # logger.debug(recent_update_keywords)
+    # return ('TextMsg', recent_update_keywords[0])
+    
+    if not is_replay:
+        recent_series = list(mongo_series.aggregate([
+            {
+                '$match': { 'keyword_id': { '$in': recent_update_keywords } }
+            },
+            {
+                '$group': {
+                    '_id': '$keyword_id',
+                    'keyword': {'$last': '$keyword'},
+                    'last_episode': {'$max': '$episode'},
+                    'last_date_episode': {'$max': '$date_episode'},
+                }
+            },
+        ]))
+        
+        random.shuffle(recent_series)
+        rkey = settings.RECOMMEND_KEY % to_user
+        redis_db.setex(rkey, 300, json_util.dumps(recent_series))
+    else:
+        rkey = settings.RECOMMEND_KEY % to_user
+        recent_series = json_util.loads(redis_db.get(rkey).decode('utf-8'))
+        
+    recommend_text_list = []
+    num = 0
+    for s in recent_series:
+        s['type'] = mongo_keywords.find_one({'_id': s['_id']})['type']
+        text = '%s. %s [%s]\n    => 更新至 ' % (num, s['keyword'], TYPE_TXT[s['type']])
+        if s['last_episode']:
+            text += '第%s话' % s['last_episode']
+        elif s['last_date_episode']:
+            text += '%s' % s['last_date_episode']
+        recommend_text_list.append(text)
+        num += 1
+    logger.debug(recent_series)
+    # recommend_text_list = [ ''for s in recent_series ]
+    for msg, is_last in _make_page(
+        recommend_text_list, 5, 
+        prefix='--- 随机顺序推荐 ---', 
+        suffix= '--- 回复N翻页 回复数字选择 ---',
+        end_suffix='--- 回复数字选择 ---'
+    ):
+        selected, is_replay = yield msg
+        if selected in ['N', 'n'] and not is_last:
+            continue
+        try:
+            selected = int(selected)
+            if selected > len(recent_series) or selected < 0:
+                raise TypeError
+            logger.debug(recent_series)
+            logger.debug(recent_series[selected]['keyword'])
+            raise UnexpectAnswer(recent_series[selected]['keyword'])
+        except UnexpectAnswer as e:
+            raise e
+        except Exception:
+            raise UnexpectAnswer
+            
+    
+    return ('TextMsg', 'Done')
     
 def pin_login(to_user):
     yield None
@@ -324,7 +405,7 @@ def show_follows(to_user):
                     logger.debug(keyword)
                     if not is_replay:
                         msg_type, msg_content = _try_follow(to_user, True, keyword)
-                        clear_msg = re.sub('%s.*$' % selected, '',msg[1])
+                        clear_msg = re.sub('%s.*\n' % selected, '' ,msg[1])
                         msg_content = '%s\n(%s)' % (clear_msg, msg_content)
                     else:
                         msg_content = 'none'
@@ -341,7 +422,6 @@ def show_follows(to_user):
             raise e
         except Exception:
             raise UnexpectAnswer
-        
 
 def _try_follow(to_user, already_followed, keyword):
     mongo_users = mongoCollection('users')
@@ -489,7 +569,7 @@ def search_keyword(to_user):
         raise UnexpectAnswer
     
     return ('TextMsg', text)
-            
+
 def active_user(to_user):
     yield None # send none for start
     msg_content, is_replay = yield None # Initial value
@@ -506,12 +586,7 @@ def active_user(to_user):
         }
     }, upsert=True)
     return HELP_LINKS
-    # user_exists = res['updatedExisting']
-    # if user_exists:
-        # return ('TextMsg', '欢迎回来！')
-    # else:
-        # return ('TextMsg', '感谢关注！')
-        
+   
 def deactive_user(to_user):
     yield None # send none for start
     msg_content = yield None # Initial value

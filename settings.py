@@ -12,6 +12,7 @@ ADDRESS = '0.0.0.0'
 CONTEXT_KEY = 'amwatcher:main:context:%s'
 PIN_KEY = 'amwatcher:main:pin:%s'
 LAST_CHECK_KEY = 'amwatcher:main:last_check_time:%s'
+RECOMMEND_KEY = 'amwatcher:main:recommend:%s'
 
 LOGGING = {
     'version': 1,
