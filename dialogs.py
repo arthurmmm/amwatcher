@@ -62,7 +62,7 @@ def _keyword_summary(keyword):
     }).sort('upload_time', DESCENDING))
     text += '更新日期：%s \n' % feeds[0]['upload_time'].strftime('%Y-%m-%d')
     
-    # 最近更新的ep或date_ep
+    # 最近更新的ep，date_ep
     text += '更新至：' 
     all_episodes = list(mongo_series.find({
         'keyword_id': keyword['_id'],
