@@ -3,6 +3,7 @@ import yaml
 
 # read local settings
 LOCAL_CONFIG_YAML = '/etc/amwatcher-main.yml'
+# LOCAL_CONFIG_YAML = '/etc/amwatcher-main.test.yml'
 with open(LOCAL_CONFIG_YAML, 'r') as f:
     LOCAL_CONFIG = yaml.load(f)
 

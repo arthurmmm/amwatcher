@@ -217,7 +217,10 @@ def show_updates(to_user):
     summary_text_list = []
     for kid in user['follow_keywords']:
         keyword = mongo_keywords.find_one({'_id': kid})
-        last_series = mongo_series.find({'keyword_id': kid}).sort('first_upload_time', DESCENDING)[0]
+        last_series = mongo_series.find({'keyword_id': kid}).sort('first_upload_time', DESCENDING)
+        if not last_series:
+            continue
+        last_series = last_series[0]
         if 'episode' in last_series:
             last_ep_text = '第%s话' % last_series['episode']
         else:
