@@ -30,7 +30,7 @@ def mongoCollection(cname):
 ROUTER = {
     'text': [
         ('^[\?\？]$', 'show_help'),
-        # ('^[\?\？]{2}$', 'show_help_link'),
+        ('^[\?\？]{2}$', 'show_help_link'),
         ('^帮助$', 'show_help'),
         ('^[!！]\d*$', 'show_updates'),
         ('^[!！][!！]$', 'show_recommend'),
@@ -63,22 +63,29 @@ def _keyword_summary(keyword):
             '$exists': False,
         },
     }).sort('upload_time', DESCENDING))
-    text += '更新日期：%s \n' % feeds[0]['upload_time'].strftime('%Y-%m-%d')
+    text += '最后更新：%s \n' % feeds[0]['upload_time'].strftime('%Y-%m-%d')
     
     # 最近更新的ep，date_ep
     text += '更新至：' 
-    all_episodes = list(mongo_series.find({
-        'keyword_id': keyword['_id'],
-    }, sort=[('season', DESCENDING),('episode', DESCENDING),('date_episode', DESCENDING),('first_upload_time', DESCENDING)]))
-    latest_series = all_episodes[0]
-    if 'season' in latest_series and latest_series['season'] != 'NO_SEASON':
-        text += '%s ' % latest_series['season']
-    if 'episode' in latest_series:
-        text += '第%s话 ' % latest_series['episode']
-    if 'date_episode' in latest_series:
-        text += latest_series['date_episode']
-    latest_series_index = 0
-    return text, feeds, all_episodes, latest_series
+    last_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('episode', DESCENDING)])
+    last_date_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('date_episode', DESCENDING)])
+    if last_ep_series[0]['first_upload_time'] >= last_date_ep_series[0]['first_upload_time']:
+        last_series = last_ep_series[0]
+    else:
+        last_series = last_date_ep_series[0]
+            
+    # all_episodes = list(mongo_series.find({
+        # 'keyword_id': keyword['_id'],
+    # }, sort=[('season', DESCENDING),('episode', DESCENDING),('date_episode', DESCENDING),('first_upload_time', DESCENDING)]))
+    # last_series = all_episodes[0]
+    if 'season' in last_series and last_series['season'] != '-1':
+        text += '第%s季 ' % last_series['season']
+    if 'episode' in last_series:
+        text += '第%s话 ' % last_series['episode']
+    if 'date_episode' in last_series:
+        text += last_series['date_episode']
+    last_series_index = 0
+    return text, feeds, last_ep_series, last_series
     
 def _make_page(text_list, page_size, prefix='', suffix='--- 回复N翻页 ---', end_suffix=''):
     idx = 0
@@ -104,6 +111,7 @@ def _make_page(text_list, page_size, prefix='', suffix='--- 回复N翻页 ---', 
 
 HELP = ''' --- 使用指南 (试用版) ---
 * 回复"?"召唤本指南
+* 回复"??"召唤图文指南
 * 直接回复剧名关键字搜索资源
 * 回复"."列出所有已关注的资源
 * 回复"!"可以查看所有已关注资源的更新动态
@@ -117,27 +125,21 @@ def show_help(to_user):
 
 HELP_LINKS = ('NewsMsg', [
     {
-        'title': '点剧菌使(tiao)用(xi)指南', 
+        'title': '使(tiao)用(xi)指南', 
         'description': '', 
-        'url': 'http://mp.weixin.qq.com/s?__biz=MzI4NTYyNjc2OA==&mid=2247483666&idx=1&sn=1269b5abb4da27d94a61b97b6bc1b7a5&chksm=ebe819eddc9f90fb7937e90559797f850b09768bc867f1b50bc66c55ceb735c309357e2872ff#rd',
+        'url': 'https://mp.weixin.qq.com/s?__biz=MzI4NTYyNjc2OA==&mid=2247483667&idx=1&sn=1c7583a0c12c92632532fce3086e4617&chksm=ebe819ecdc9f90fa496c1546dde716e0afa20e9f082ad74b72475e696143c1f16d0e2d993b4f#rd',
         'pic_url': 'http://okmokavp8.bkt.clouddn.com/images/timg.jpg',
     },
     {
-        'title': '剧单 - 动画', 
+        'title': '追踪新资源', 
         'description': '', 
-        'url': 'http://www.jianshu.com/p/3dfbb46f957e',
+        'url': 'https://www.wenjuan.net/s/mmeYZj/',
         'pic_url': 'http://okmokavp8.bkt.clouddn.com/20151004103746_yfhzC.jpeg',
     },
     {
-        'title': '剧单 - 日剧', 
+        'title': '意见与建议', 
         'description': '', 
-        'url': 'http://www.jianshu.com/p/37d3efd2f073',
-        'pic_url': 'http://okmokavp8.bkt.clouddn.com/20151004103746_yfhzC.jpeg',
-    },
-    {
-        'title': '剧单 - 综艺', 
-        'description': '', 
-        'url': 'http://www.jianshu.com/p/d08be0e34e67',
+        'url': 'https://www.wenjuan.net/s/Z3qIBj/',
         'pic_url': 'http://okmokavp8.bkt.clouddn.com/20151004103746_yfhzC.jpeg',
     },
 ])
@@ -214,10 +216,16 @@ def show_updates(to_user):
     summary_text_list = []
     for kid in user['follow_keywords']:
         keyword = mongo_keywords.find_one({'_id': kid})
-        last_series = mongo_series.find({'keyword_id': kid}).sort('first_upload_time', DESCENDING)
-        if not last_series:
+        # last_series = mongo_series.find({'keyword_id': kid}).sort('first_upload_time', DESCENDING)
+        last_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('episode', DESCENDING)])
+        last_date_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('date_episode', DESCENDING)])
+        if not last_ep_series:
             continue
-        last_series = last_series[0]
+        if last_ep_series[0]['first_upload_time'] >= last_date_ep_series[0]['first_upload_time']:
+            last_series = last_ep_series[0]
+        else:
+            last_series = last_date_ep_series[0]
+        # last_series = last_series[0]
         if 'episode' in last_series:
             last_ep_text = '第%s话' % last_series['episode']
         else:
@@ -274,7 +282,6 @@ def show_recommend(to_user):
     
     mongo_feeds = mongoCollection('feeds')
     mongo_series = mongoCollection('series')
-    # mongo_users = mongoCollection('users')
     mongo_keywords = mongoCollection('keywords')
     now_time = datetime.now()
     start_time = now_time - timedelta(days=7)
@@ -283,9 +290,6 @@ def show_recommend(to_user):
         'scrapy_time': { '$gte': start_time }, # 获取在上次爬取后新增的资源
         'break_rules': {'$exists': False},
     }))
-    # random.shuffle(recent_update_keywords)
-    # logger.debug(recent_update_keywords)
-    # return ('TextMsg', recent_update_keywords[0])
     
     if not is_replay:
         recent_series = list(mongo_series.aggregate([
@@ -381,6 +385,8 @@ def show_follows(to_user):
     mongo_keywords = mongoCollection('keywords')
     user = mongo_users.find_one({'open_id': to_user})
     follow_list = user['follow_keywords']
+    if not follow_list:
+        return ('TextMsg', '您还没有关注资源哦，回复剧名搜索或者回复"!!"随便看看吧~')
     keywords = list(mongo_keywords.find({'_id': {'$in': follow_list}}))
     num = 0
     text_list = []
@@ -476,7 +482,7 @@ def search_keyword(to_user):
     count = len(keywords)
     already_followed = {}
     if count == 0:
-        return ('TextMsg', '没有找到"%s"相关的资源，如需添加新资源请发送邮件至: dianjutv@outlook.com' % msg_content.strip())
+        return ('TextMsg', '没有找到"%s"相关的资源，如需添加新资源请点击: https://www.wenjuan.net/s/mmeYZj/' % msg_content.strip())
     elif count > 1:
         text_list = []
         num = 0
@@ -527,7 +533,7 @@ def search_keyword(to_user):
         selected = 0
     keyword = keywords[selected]
 
-    text, feeds, all_episodes, latest_series = _keyword_summary(keyword)
+    text, feeds, all_episodes, last_series = _keyword_summary(keyword)
     
     text += '\n-----\n'
     text += '回复L列出所有资源\n'
@@ -585,8 +591,8 @@ def active_user(to_user):
             'site': 'main',
         }
     }, upsert=True)
-    return ('TextMsg', HELP)
-    # return HELP_LINKS
+    # return ('TextMsg', HELP)
+    return HELP_LINKS
    
 def deactive_user(to_user):
     yield None # send none for start
