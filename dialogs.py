@@ -67,17 +67,13 @@ def _keyword_summary(keyword):
     
     # 最近更新的ep，date_ep
     text += '更新至：' 
-    last_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('episode', DESCENDING)])
-    last_date_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('date_episode', DESCENDING)])
+    last_ep_series = list(mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('episode', DESCENDING), ('date_episode', DESCENDING)]))
+    last_date_ep_series = list(mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('date_episode', DESCENDING), ('episode', DESCENDING)]))
     if last_ep_series[0]['first_upload_time'] >= last_date_ep_series[0]['first_upload_time']:
         last_series = last_ep_series[0]
     else:
         last_series = last_date_ep_series[0]
-            
-    # all_episodes = list(mongo_series.find({
-        # 'keyword_id': keyword['_id'],
-    # }, sort=[('season', DESCENDING),('episode', DESCENDING),('date_episode', DESCENDING),('first_upload_time', DESCENDING)]))
-    # last_series = all_episodes[0]
+
     if 'season' in last_series and last_series['season'] != '-1':
         text += '第%s季 ' % last_series['season']
     if 'episode' in last_series:
@@ -216,9 +212,8 @@ def show_updates(to_user):
     summary_text_list = []
     for kid in user['follow_keywords']:
         keyword = mongo_keywords.find_one({'_id': kid})
-        # last_series = mongo_series.find({'keyword_id': kid}).sort('first_upload_time', DESCENDING)
-        last_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('episode', DESCENDING)])
-        last_date_ep_series = mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('date_episode', DESCENDING)])
+        last_ep_series = list(mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('episode', DESCENDING), ('date_episode', DESCENDING)]))
+        last_date_ep_series = list(mongo_series.find({'keyword_id': keyword['_id']}, sort=[('season', DESCENDING), ('date_episode', DESCENDING), ('episode', DESCENDING)]))
         if not last_ep_series:
             continue
         if last_ep_series[0]['first_upload_time'] >= last_date_ep_series[0]['first_upload_time']:
