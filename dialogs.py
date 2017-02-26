@@ -30,11 +30,13 @@ def mongoCollection(cname):
 ROUTER = {
     'text': [
         ('^[\?\？]$', 'show_help'),
+        ('^[\?\？]帮助$', 'show_help'),
         ('^[\?\？]{2}$', 'show_help_link'),
-        ('^帮助$', 'show_help'),
+        ('^[\?\？]文档$', 'show_help_link'),
         ('^[!！]\d*$', 'show_updates'),
-        ('^[!！][!！]$', 'show_recommend'),
+        ('^[\?\？]更新\d*$', 'show_updates'),
         ('^[.。]$', 'show_follows'),
+        ('^[\?\？]关注$', 'show_follows'),
         # ('^\d{6}$', 'pin_login'),
         ('.*', 'search_keyword'),
     ],
@@ -106,13 +108,13 @@ def _make_page(text_list, page_size, prefix='', suffix='--- 回复N翻页 ---', 
             return
 
 HELP = ''' --- 使用指南 (试用版) ---
-* 回复"?"召唤本指南
-* 回复"??"召唤图文指南
+* 回复"?"或"#帮助": 召唤本指南
+* 回复"??"或"#文档": 召唤图文指南
 * 直接回复剧名关键字搜索资源
-* 回复"."列出所有已关注的资源
-* 回复"!"可以查看所有已关注资源的更新动态
-* 回复"!"加数字显示一段时间内的更新，比如回复"!7"显示关注资源7天内的更新情况
-* 回复"!!"随机顺序显示资源列表
+* 回复"."或"#关注": 列出已关注的资源
+* 回复"!"或"#更新": 查看已关注资源的更新
+* 回复"!"或"#更新"加数字: 显示一段时间内的更新，比如回复"!7"显示关注资源7天内的更新情况
+* 回复"?!"或"#随机": 随机顺序显示资源列表
 (๑•̀ㅂ•́)و✧  感谢支持'''
 def show_help(to_user):
     yield None
@@ -162,6 +164,9 @@ def show_updates(to_user):
     
     # 获取用户关注的keyword和它的最新剧集
     user = mongo_users.find_one({'open_id': to_user})
+    # 没关注的用户显示提示
+    if 'follow_keywords' not in user or not user['follow_keywords']:
+        return ('TextMsg', '您还没有关注资源哦，回复剧名搜索或者回复"!!"随便看看吧~')
     if back_days == 0:
         last_check_time = user['last_check_time'] 
         if now_time - last_check_time > timedelta(days=30): # 最多显示1个月内的更新，避免内容过多
@@ -270,80 +275,6 @@ def show_updates(to_user):
                     raise UnexpectAnswer
         else:
             raise UnexpectAnswer        
-
-def show_recommend(to_user):
-    yield None
-    msg_content, is_replay = yield None
-    
-    mongo_feeds = mongoCollection('feeds')
-    mongo_series = mongoCollection('series')
-    mongo_keywords = mongoCollection('keywords')
-    now_time = datetime.now()
-    start_time = now_time - timedelta(days=7)
-    recent_update_keywords = list(mongo_feeds.distinct('keyword_id',
-    {
-        'scrapy_time': { '$gte': start_time }, # 获取在上次爬取后新增的资源
-        'break_rules': {'$exists': False},
-    }))
-    
-    if not is_replay:
-        recent_series = list(mongo_series.aggregate([
-            {
-                '$match': { 'keyword_id': { '$in': recent_update_keywords } }
-            },
-            {
-                '$group': {
-                    '_id': '$keyword_id',
-                    'keyword': {'$last': '$keyword'},
-                    'last_episode': {'$max': '$episode'},
-                    'last_date_episode': {'$max': '$date_episode'},
-                }
-            },
-        ]))
-        
-        random.shuffle(recent_series)
-        rkey = settings.RECOMMEND_KEY % to_user
-        redis_db.setex(rkey, 300, json_util.dumps(recent_series))
-    else:
-        rkey = settings.RECOMMEND_KEY % to_user
-        recent_series = json_util.loads(redis_db.get(rkey).decode('utf-8'))
-        
-    recommend_text_list = []
-    num = 0
-    for s in recent_series:
-        s['type'] = mongo_keywords.find_one({'_id': s['_id']})['type']
-        text = '%s. %s [%s]\n    => 更新至 ' % (num, s['keyword'], TYPE_TXT[s['type']])
-        if s['last_episode']:
-            text += '第%s话' % s['last_episode']
-        elif s['last_date_episode']:
-            text += '%s' % s['last_date_episode']
-        recommend_text_list.append(text)
-        num += 1
-    logger.debug(recent_series)
-    # recommend_text_list = [ ''for s in recent_series ]
-    for msg, is_last in _make_page(
-        recommend_text_list, 5, 
-        prefix='--- 随机顺序推荐 ---', 
-        suffix= '--- 回复N翻页 回复数字选择 ---',
-        end_suffix='--- 回复数字选择 ---'
-    ):
-        selected, is_replay = yield msg
-        if selected in ['N', 'n'] and not is_last:
-            continue
-        try:
-            selected = int(selected)
-            if selected > len(recent_series) or selected < 0:
-                raise TypeError
-            logger.debug(recent_series)
-            logger.debug(recent_series[selected]['keyword'])
-            raise UnexpectAnswer(recent_series[selected]['keyword'])
-        except UnexpectAnswer as e:
-            raise e
-        except Exception:
-            raise UnexpectAnswer
-            
-    
-    return ('TextMsg', 'Done')
     
 def pin_login(to_user):
     yield None
@@ -379,9 +310,9 @@ def show_follows(to_user):
     mongo_users = mongoCollection('users')
     mongo_keywords = mongoCollection('keywords')
     user = mongo_users.find_one({'open_id': to_user})
-    follow_list = user['follow_keywords']
-    if not follow_list:
+    if 'follow_keywords' not in user or not user['follow_keywords']:
         return ('TextMsg', '您还没有关注资源哦，回复剧名搜索或者回复"!!"随便看看吧~')
+    follow_list = user['follow_keywords']
     keywords = list(mongo_keywords.find({'_id': {'$in': follow_list}}))
     num = 0
     text_list = []
@@ -414,6 +345,8 @@ def show_follows(to_user):
                 else:
                     logger.debug(selected)
                     break
+            if selected in ['N', 'n'] and not is_last:
+                continue
             selected = int(selected)
             if selected > len(keywords) or selected < 0:
                 raise TypeError
@@ -456,6 +389,14 @@ def search_keyword(to_user):
     
     user = mongo_users.find_one({'open_id': to_user})
     
+    shuffle = False
+    msg_content = msg_content.strip()
+    if msg_content in ['!!', '！！', '!！', '！!']:
+        msg_content = '.*'
+        shuffle = True
+    elif msg_content in ['？随机', '?随机']:
+        msg_content = '.*'
+        shuffle = True
     try:
         keywords = mongo_keywords.find({
             '$or': [
@@ -474,6 +415,15 @@ def search_keyword(to_user):
     except Exception:
         return ('TextMsg', '∑(っ °Д °;)っ请不要输入奇怪的东西啦，真的会死机的哦~~')
     keywords = [k for k in keywords]
+    
+    if shuffle and not is_replay:
+        random.shuffle(keywords)
+        rkey = settings.RECOMMEND_KEY % to_user
+        redis_db.setex(rkey, 300, json_util.dumps(keywords))
+    elif shuffle and is_replay :
+        rkey = settings.RECOMMEND_KEY % to_user
+        keywords = json_util.loads(redis_db.get(rkey).decode('utf-8'))
+    
     count = len(keywords)
     already_followed = {}
     if count == 0:
@@ -518,6 +468,8 @@ def search_keyword(to_user):
                     else:
                         logger.debug(selected)
                         break
+                if selected in ['N', 'n'] and not is_last:
+                    continue
                 selected = int(selected)
                 if selected > count or selected < 0:
                     raise TypeError
@@ -584,6 +536,7 @@ def active_user(to_user):
             'active': True,
             'open_id': to_user,
             'site': 'main',
+            'last_check_time': datetime.now() - timedelta(days=365),
         }
     }, upsert=True)
     # return ('TextMsg', HELP)
