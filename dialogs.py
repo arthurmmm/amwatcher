@@ -30,7 +30,7 @@ def mongoCollection(cname):
 ROUTER = {
     'text': [
         ('^[\?\？]$', 'show_help'),
-        ('^[\?\？]{2}$', 'show_help_link'),
+        # ('^[\?\？]{2}$', 'show_help_link'),
         ('^帮助$', 'show_help'),
         ('^[!！]\d*$', 'show_updates'),
         ('^[!！][!！]$', 'show_recommend'),
@@ -104,15 +104,12 @@ def _make_page(text_list, page_size, prefix='', suffix='--- 回复N翻页 ---', 
 
 HELP = ''' --- 使用指南 (试用版) ---
 * 回复"?"召唤本指南
-* 回复两个问号"??"召唤图文说明和所有可关注资源的清单
-* 直接回复剧名关键字搜索资源，回复".*"可以逐条列出所有剧集
-* 搜索到资源后按提示操作即可，可以显示链接或者关注该资源的更新
+* 直接回复剧名关键字搜索资源
 * 回复"."列出所有已关注的资源
 * 回复"!"可以查看所有已关注资源的更新动态
 * 回复"!"加数字显示一段时间内的更新，比如回复"!7"显示关注资源7天内的更新情况
-* 希望添加新资源或者有任何建议请发送邮件到：dianjutv@outlook.com
-* 试用版仅支持B站资源哦，更多内容还在开发中，感谢支持
-(๑•̀ㅂ•́)و✧'''
+* 回复"!!"随机顺序显示资源列表
+(๑•̀ㅂ•́)و✧  感谢支持'''
 def show_help(to_user):
     yield None
     msg_content, is_replay = yield None
@@ -588,7 +585,8 @@ def active_user(to_user):
             'site': 'main',
         }
     }, upsert=True)
-    return HELP_LINKS
+    return ('TextMsg', HELP)
+    # return HELP_LINKS
    
 def deactive_user(to_user):
     yield None # send none for start
