@@ -30,13 +30,10 @@ def mongoCollection(cname):
 ROUTER = {
     'text': [
         ('^[\?\？]$', 'show_help'),
-        ('^[\?\？]帮助$', 'show_help'),
         ('^[\?\？]{2}$', 'show_help_link'),
-        ('^[\?\？]文档$', 'show_help_link'),
         ('^[!！]\d*$', 'show_updates'),
-        ('^[\?\？]更新\d*$', 'show_updates'),
+        ('^[!！]{2}\d*$', 'show_all_updates'),
         ('^[.。]$', 'show_follows'),
-        ('^[\?\？]关注$', 'show_follows'),
         # ('^\d{6}$', 'pin_login'),
         ('.*', 'search_keyword'),
     ],
@@ -107,14 +104,15 @@ def _make_page(text_list, page_size, prefix='', suffix='--- 回复N翻页 ---', 
             yield ('TextMsg', text), True
             return
 
-HELP = ''' --- 使用指南 (试用版) ---
-* 回复"?"或"#帮助": 召唤本指南
-* 回复"??"或"#文档": 召唤图文指南
+HELP = ''' --- 使用指南 ---
+* 回复"?": 召唤本指南
+* 回复"??": 召唤图文指南
 * 直接回复剧名关键字搜索资源
-* 回复"."或"#关注": 列出已关注的资源
-* 回复"!"或"#更新": 查看已关注资源的更新
-* 回复"!"或"#更新"加数字: 显示一段时间内的更新，比如回复"!7"显示关注资源7天内的更新情况
-* 回复"?!"或"#随机": 随机顺序显示资源列表
+* 回复".": 列出已关注的资源
+* 回复"!": 查看已关注资源的更新
+* 回复"!"加数字: 显示一段时间内的更新，比如回复"!7"显示关注资源7天内的更新情况
+* 回复"!!"（加数字）：显示一段时间内(默认7天)，所有资源的更新情况
+* 回复"..": 列出所有资源(随机顺序)
 (๑•̀ㅂ•́)و✧  感谢支持'''
 def show_help(to_user):
     yield None
@@ -129,7 +127,7 @@ HELP_LINKS = ('NewsMsg', [
         'pic_url': 'http://okmokavp8.bkt.clouddn.com/images/timg.jpg',
     },
     {
-        'title': '追踪新资源', 
+        'title': '添加新资源', 
         'description': '', 
         'url': 'https://www.wenjuan.net/s/mmeYZj/',
         'pic_url': 'http://okmokavp8.bkt.clouddn.com/20151004103746_yfhzC.jpeg',
@@ -144,8 +142,56 @@ HELP_LINKS = ('NewsMsg', [
 def show_help_link(to_user):
     yield None
     msg_content, is_replay = yield None
-    return HELP_LINKS
+    return HELP_LINKS      
+
+def show_all_updates(to_user):
+    yield None
+    msg_content, is_replay = yield None
+    now_time = datetime.now()
+    back_days = 7
+    try:
+        back_days = int(msg_content.replace("!", "").replace("！", ""))
+    except ValueError:
+        pass
+    last_check_time = now_time - timedelta(days=back_days)
+    mongo_feeds = mongoCollection('feeds')
+    # 获取所有新资源
+    updated_keywords = mongo_feeds.aggregate([
+        {'$match': {
+            'scrapy_time': { '$gte': last_check_time }, # 获取在上次爬取后新增的资源
+            'upload_time': { '$gte': last_check_time - timedelta(days=5) }, # 同时upload_time必须在一周内,避免因搜索排名导致的误更新
+            'break_rules': { '$exists': False },
+        }},
+        {'$group': {
+            "_id": {
+                "keyword": "$keyword_title",
+            },
+            "last_update": { "$max": "$upload_time" },
+        }},
+        {'$sort': {'last_update': -1}},
+    ])
+    summary_text_list = []
+    for item in updated_keywords:
+        keyword = item['_id']['keyword']
+        last_update = item['last_update'].strftime('%Y-%m-%d')
+        summary_text_list.append('%s => 更新时间：%s' % (keyword, last_update))
+
+    if not summary_text_list:
+        return ('TextMsg', '该时段无资源更新！' % last_check_time.strftime('%Y/%m/%d %H:%M'))
+    if back_days > 0:
+        prefix = '--- %s天内的所有更新 ---' % back_days
     
+    for msg, is_last in _make_page(
+        summary_text_list, 10, 
+        prefix=prefix, 
+        suffix= '--- 回复N翻页 ---',
+    ):
+        selected, is_replay = yield msg
+        if selected in ['N', 'n'] and not is_last:
+            continue
+        else:
+            raise UnexpectAnswer    
+
 def show_updates(to_user):
     yield None
     msg_content, is_replay = yield None
@@ -164,9 +210,11 @@ def show_updates(to_user):
     
     # 获取用户关注的keyword和它的最新剧集
     user = mongo_users.find_one({'open_id': to_user})
+    if 'last_check_time' not in user:
+        user['last_check_time'] = now_time
     # 没关注的用户显示提示
     if 'follow_keywords' not in user or not user['follow_keywords']:
-        return ('TextMsg', '您还没有关注资源哦，回复剧名搜索或者回复"!!"随便看看吧~')
+        return ('TextMsg', '您还没有关注资源哦，回复剧名搜索或者回复".."列出所有资源~')
     if back_days == 0:
         last_check_time = user['last_check_time'] 
         if now_time - last_check_time > timedelta(days=30): # 最多显示1个月内的更新，避免内容过多
@@ -275,7 +323,7 @@ def show_updates(to_user):
                     raise UnexpectAnswer
         else:
             raise UnexpectAnswer        
-    
+       
 def pin_login(to_user):
     yield None
     msg_content, is_replay = yield None
@@ -391,10 +439,7 @@ def search_keyword(to_user):
     
     shuffle = False
     msg_content = msg_content.strip()
-    if msg_content in ['!!', '！！', '!！', '！!']:
-        msg_content = '.*'
-        shuffle = True
-    elif msg_content in ['？随机', '?随机']:
+    if msg_content in ['..', '。。', '.。', '。.']:
         msg_content = '.*'
         shuffle = True
     try:
