@@ -87,3 +87,5 @@ ENV/
 
 # Rope project settings
 .ropeproject
+._.DS_Store
+*.DS_Store
