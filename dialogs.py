@@ -161,6 +161,7 @@ def show_all_updates(to_user):
             'scrapy_time': { '$gte': last_check_time }, # 获取在上次爬取后新增的资源
             'upload_time': { '$gte': last_check_time - timedelta(days=5) }, # 同时upload_time必须在一周内,避免因搜索排名导致的误更新
             'break_rules': { '$exists': False },
+            'analyzed': True,
         }},
         {'$group': {
             "_id": {
@@ -257,6 +258,7 @@ def show_updates(to_user):
         'scrapy_time': { '$gte': last_check_time }, # 获取在上次爬取后新增的资源
         'upload_time': { '$gte': last_check_time - timedelta(days=5) }, # 同时upload_time必须在一周内,避免因搜索排名导致的误更新
         'break_rules': {'$exists': False},
+        'analyzed': True,
     }).sort('upload_time', DESCENDING))
     
     text_list = ['%(title)s\n%(href)s' % f for f in new_feeds]
