@@ -6,7 +6,7 @@ import settings
 import logging
 import random
 from redis import StrictRedis
-from pymongo import MongoClient, DESCENDING
+from pymongo import MongoClient, DESCENDING, ASCENDING
 from flask import url_for
 from wechat.bot import UnexpectAnswer
 from datetime import datetime, timedelta
@@ -104,41 +104,16 @@ def _make_page(text_list, page_size, prefix='', suffix='--- 回复N翻页 ---', 
             yield ('TextMsg', text), True
             return
 
-HELP = ''' --- 使用指南 ---
-* 回复"?": 召唤本指南
-* 回复"??": 召唤图文指南
-* 直接回复剧名关键字搜索资源
-* 回复".": 列出已关注的资源
-* 回复"!": 查看已关注资源的更新
-* 回复"!"加数字: 显示一段时间内的更新，比如回复"!7"显示关注资源7天内的更新情况
-* 回复"!!"（加数字）：显示一段时间内(默认7天)，所有资源的更新情况
-* 回复"..": 列出所有资源(随机顺序)
-(๑•̀ㅂ•́)و✧  感谢支持'''
+# 从MONGO里面读取HELP_LINKS和HELP_MESSAGE
+meta = mongoCollection('meta')
+HELP_LINKS = ('NewsMsg', list(meta.find({'type': 'HELP_LINKS'}, sort=[('order', ASCENDING)])))
+HELP_MESSAGE = '\n'.join( meta.find_one({'type': 'HELP_MESSAGE'})['content'] )
+
 def show_help(to_user):
     yield None
     msg_content, is_replay = yield None
-    return ('TextMsg', HELP)
+    return ('TextMsg', HELP_MESSAGE)
 
-HELP_LINKS = ('NewsMsg', [
-    {
-        'title': '使(tiao)用(xi)指南', 
-        'description': '', 
-        'url': 'https://mp.weixin.qq.com/s?__biz=MzI4NTYyNjc2OA==&mid=2247483667&idx=1&sn=1c7583a0c12c92632532fce3086e4617&chksm=ebe819ecdc9f90fa496c1546dde716e0afa20e9f082ad74b72475e696143c1f16d0e2d993b4f#rd',
-        'pic_url': 'http://okmokavp8.bkt.clouddn.com/images/timg.jpg',
-    },
-    {
-        'title': '添加新资源', 
-        'description': '', 
-        'url': 'https://www.wenjuan.net/s/mmeYZj/',
-        'pic_url': 'http://okmokavp8.bkt.clouddn.com/20151004103746_yfhzC.jpeg',
-    },
-    {
-        'title': '意见与建议', 
-        'description': '', 
-        'url': 'https://www.wenjuan.net/s/Z3qIBj/',
-        'pic_url': 'http://okmokavp8.bkt.clouddn.com/20151004103746_yfhzC.jpeg',
-    },
-])
 def show_help_link(to_user):
     yield None
     msg_content, is_replay = yield None
